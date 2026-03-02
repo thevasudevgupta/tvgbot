@@ -13,6 +13,8 @@
 # TODO: implement whatsapp tomorrow
 # we also need to let safeclaw know how we talk
 
+# tool_result can become super long sometimes and model goes out of max length often
+
 # DONE
 # twitter, linkedin
 # it should be controlled by simple discord channel

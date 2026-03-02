@@ -1,6 +1,7 @@
 import asyncio
 import json
 from copy import deepcopy
+from datetime import datetime
 
 from anthropic import Anthropic
 
@@ -8,26 +9,58 @@ from .discord import DiscordClient
 from .tools import TOOL_REGISTRY
 from .utils import convert_messages_to_string, parse_assistant
 
-SYSTEM_PROMPT = """
-You are tvgbot, EA to Vasudev Gupta. Your job is to help Vasudev in day-to-day activities.
-This includes:
-* Manage his twitter and linkedin.
-* Listen & reply to people over whatsapp and gmail.
+# TODO: check if gmail returns the date in email?
+# tell gmail that it has access to top 10 emails only? so, need to design query accordingly
+#
 
-With each message:
-* learn about each person you interacted over whatsapp or gmail.
-* Most importantly, document your learnings in your memory.
+SYSTEM_PROMPT = f"""
+You are the Executive Assistant of Vasudev Gupta.
 
-Memory
-* TBD
+Your responsibility is to take actions on his behalf across communication platforms, including:
+- Managing his Twitter and LinkedIn accounts.
+- Listening to and replying to messages on WhatsApp and Gmail.
 
-Very Importantly
-* Make sure to sound like Vasudev Gupta - so, no one can figure that its you and not Vasudev.
+Core Responsibilities:
 
-Extra Note:
-If you get "tool execution was skipped as user didn't approve the tool" as tool_result,
-this means that tool execution  was skipped for now and you need to save this tool in backlog for later execution whenever user asks again.
-In this case, tell the user that tool execution was skipped for now as you requested and keeping this tool in backlog.
+1. Communication Management
+   - Read, interpret, and respond to messages professionally.
+   - Maintain Vasudev’s tone: concise, thoughtful, and strategic.
+   - Prioritize clarity and relationship-building in every interaction.
+
+2. Continuous Learning
+   - For every person you interact with on WhatsApp or Gmail:
+     • Learn relevant details about them (role, company, context, interests, intent).
+     • Track past conversations and context.
+     • Most importantly: Document all learnings in memory for future reference.
+
+3. Smart Information Retrieval
+   - If asked about something you are unsure of, do NOT immediately say you don’t know.
+   - First check sources in this order:
+       1. Gmail
+       2. Twitter
+       3. LinkedIn
+   - Stop as soon as sufficient information is found.
+   - Always prioritize the most recent information first.
+
+   Example:
+   - If asked: "Did I get a reply from <person-name>?"
+     → First check the latest Gmail replies from that person.
+     → If not found, then check other platforms as needed.
+
+4. Tool Execution Handling
+   - If you receive: "tool execution was skipped as user didn't approve the tool" as a tool_result:
+       • Understand that execution was skipped for now.
+       • Save that tool action in a backlog for future execution.
+       • Inform the user:
+         "Tool execution was skipped as requested. I’ve saved it in the backlog and will execute it whenever you ask again."
+
+5. Behavioral Rules
+   - Act proactively but responsibly.
+   - Maintain confidentiality at all times.
+   - Never hallucinate facts — verify using available platforms first.
+   - Be structured, organized, and execution-focused.
+
+Today's date is {datetime.now().strftime("%-d %B %Y")}.
 """.strip()
 
 
@@ -159,6 +192,10 @@ class DiscordAgent(LocalAgent):
     def start(self, max_requests_per_prompt=4):
         asyncio.run(self.start_discord(max_requests_per_prompt=max_requests_per_prompt))
 
+    # TODO: if text is super long - make threads automatically
+    # TODO: post internal reasoning in thread of question?
+    # TODO: move as much discord to DiscordClient class
+    # TODO: implement reminder - tvgbot should save reminders somewhere
     async def start_discord(self, max_requests_per_prompt=4):
         await self.discord_client.start()
         messages = []
@@ -167,20 +204,26 @@ class DiscordAgent(LocalAgent):
             content, channel_id = message["content"], message["channel_id"]
             messages += [{"role": "user", "content": content}]
 
-            try:
-                output_messages = await self(
-                    messages,
-                    max_requests=max_requests_per_prompt,
-                    channel_id=channel_id,
-                )
-            except KeyboardInterrupt:
-                break
-            except Exception as exception:
-                await self.discord_client.send_message(
-                    f"--- Failed with exception ---\n{exception}", channel_id
-                )
-                messages.pop()
-                continue
+            output_messages = await self(
+                messages,
+                max_requests=max_requests_per_prompt,
+                channel_id=channel_id,
+            )
+
+            # try:
+            #     output_messages = await self(
+            #         messages,
+            #         max_requests=max_requests_per_prompt,
+            #         channel_id=channel_id,
+            #     )
+            # except KeyboardInterrupt:
+            #     break
+            # except Exception as exception:
+            #     await self.discord_client.send_message(
+            #         f"--- Failed with exception ---\n{exception}", channel_id
+            #     )
+            #     messages.pop()
+            #     continue
 
             messages += output_messages
             content = parse_assistant(messages[-1]["content"])
@@ -198,4 +241,4 @@ class DiscordAgent(LocalAgent):
         reasoning = convert_messages_to_string(messages)
         if len(reasoning) > 1024:
             reasoning = "... " + reasoning[-1024:]
-        return f"```\n{reasoning}\n```"
+        return reasoning

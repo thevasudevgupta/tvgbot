@@ -9,8 +9,9 @@ from dotenv import load_dotenv
 assert load_dotenv()
 import base64
 import os
-from email import message_from_bytes
+from email import policy
 from email.mime.text import MIMEText
+from email.parser import BytesParser
 
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -56,16 +57,15 @@ class GmailClient:
         cmd = self.service.get(userId="me", id=id, format="raw")
         response = cmd.execute()
         response = base64.urlsafe_b64decode(response["raw"])
-        response = message_from_bytes(response)
-
+        response = BytesParser(policy=policy.default).parsebytes(response)
         if response.is_multipart():
             body = None
             for part in response.walk():
                 if part.get_content_type() == "text/plain":
-                    body = part.get_payload(decode=True).decode()
+                    body = part.get_content()
                     break
         else:
-            body = response.get_payload(decode=True).decode()
+            body = part.get_content()
 
         return {
             "id": id,
@@ -77,5 +77,7 @@ class GmailClient:
 
     def list_emails(self, query=None, max_results=10):
         cmd = self.service.list(userId="me", q=query, maxResults=max_results)
-        response = [info["id"] for info in cmd.execute().get("messages", [])]
-        return [self.read_email(id) for id in response]
+        print(cmd)
+        response = cmd.execute().get("messages", [])
+        print(response)
+        return [self.read_email(info["id"]) for info in response]
